@@ -1,0 +1,457 @@
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <title>Shopping List App</title>
+    </head>
+    <body>
+        <div
+            x-data="{
+    activeTab: new URLSearchParams(window.location.search).get('tab') || 'recipes',
+    recipes: JSON.parse(document.cookie.match(/recipes=([^;]*)/) ? decodeURIComponent(document.cookie.match(/recipes=([^;]*)/)[1]) : '[]'),
+    ingredients: [],
+    newRecipe: {name: '', ingredients: []},
+    newIngredient: '',
+    isEditing: false,
+    editingRecipe: null,
+    allIngredients: new Set(),
+    suggestions: [],
+    shoppingListInput: '',
+    manualAddItems: JSON.parse(document.cookie.match(/manualAddItems=([^;]*)/) ? decodeURIComponent(document.cookie.match(/manualAddItems=([^;]*)/)[1]) : '[]'),
+    haveIngredients: new Set(JSON.parse(document.cookie.match(/haveIngredients=([^;]*)/) ? decodeURIComponent(document.cookie.match(/haveIngredients=([^;]*)/)[1]) : '[]')),
+
+    init() {
+        this.updateIngredients();
+        this.updateAllIngredients();
+        this.ingredients.push(...this.manualAddItems.map(item => ({
+            name: item,
+            needed: true,
+            recipes: ['Manual Add']
+        })));
+    },
+
+    updateAllIngredients() {
+        this.allIngredients.clear();
+        this.recipes.forEach(recipe => {
+            recipe.ingredients.forEach(ing => {
+                this.allIngredients.add(ing);
+            });
+        });
+        this.manualAddItems.forEach(item => {
+            this.allIngredients.add(item);
+        });
+    },
+
+    toggleRecipeActive(recipe, event) {
+        if (!event.target.closest('.recipe-action')) {
+            recipe.active = !recipe.active;
+            this.updateIngredients();
+            document.cookie = 'recipes=' + encodeURIComponent(JSON.stringify(this.recipes)) + '; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Strict';
+        }
+    },
+
+    addIngredient() {
+        if (this.newIngredient.trim()) {
+            this.newRecipe.ingredients.push(this.newIngredient.trim());
+            this.newIngredient = '';
+            this.suggestions = [];
+        }
+    },
+
+    updateShoppingListSuggestions() {
+        if (this.shoppingListInput) {
+            this.suggestions = Array.from(this.allIngredients)
+                .filter(ing => ing.toLowerCase().includes(this.shoppingListInput.toLowerCase()))
+                .slice(0, 5);
+        } else {
+            this.suggestions = [];
+        }
+    },
+
+    selectShoppingListSuggestion(suggestion) {
+        this.shoppingListInput = suggestion;
+        this.suggestions = [];
+    },
+
+    addShoppingListItem() {
+        if (this.shoppingListInput.trim()) {
+            const newItem = this.shoppingListInput.trim();
+            this.ingredients.push({
+                name: newItem,
+                needed: true,
+                recipes: ['Manual Add']
+            });
+            if (!this.manualAddItems.includes(newItem)) {
+                this.manualAddItems.push(newItem);
+                document.cookie = 'manualAddItems=' + encodeURIComponent(JSON.stringify(this.manualAddItems)) + '; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Strict';
+            }
+            this.shoppingListInput = '';
+            this.suggestions = [];
+            this.updateAllIngredients();
+        }
+    },
+
+    editRecipe(recipe) {
+        this.editingRecipe = recipe;
+        this.newRecipe = {
+            name: recipe.name,
+            ingredients: [...recipe.ingredients]
+        };
+        this.isEditing = true;
+    },
+
+    deleteRecipe(recipe) {
+        if (confirm('Are you sure you want to delete this recipe?')) {
+            this.recipes = this.recipes.filter(r => r !== recipe);
+            this.updateIngredients();
+            this.updateAllIngredients();
+            document.cookie = 'recipes=' + encodeURIComponent(JSON.stringify(this.recipes)) + '; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Strict';
+        }
+    },
+
+    updateSuggestions() {
+        if (this.newIngredient) {
+            this.suggestions = Array.from(this.allIngredients)
+                .filter(ing => ing.toLowerCase().includes(this.newIngredient.toLowerCase()))
+                .slice(0, 5);
+        } else {
+            this.suggestions = [];
+        }
+    },
+
+    selectSuggestion(suggestion) {
+        this.newIngredient = suggestion;
+        this.suggestions = [];
+    },
+
+    saveRecipe() {
+        if (this.editingRecipe) {
+            Object.assign(this.editingRecipe, {
+                name: this.newRecipe.name,
+                ingredients: this.newRecipe.ingredients
+            });
+        } else {
+            this.recipes.push({
+                name: this.newRecipe.name,
+                ingredients: this.newRecipe.ingredients,
+                active: true
+            });
+        }
+        this.newRecipe = {name: '', ingredients: []};
+        this.newIngredient = '';
+        this.isEditing = false;
+        this.editingRecipe = null;
+        this.updateIngredients();
+        this.updateAllIngredients();
+        document.cookie = 'recipes=' + encodeURIComponent(JSON.stringify(this.recipes)) + '; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Strict';
+    },
+
+    deleteManualItem(ingredient) {
+        if (confirm('Are you sure you want to delete this item?')) {
+            this.manualAddItems = this.manualAddItems.filter(i => i !== ingredient.name);
+            this.ingredients = this.ingredients.filter(i => i.name !== ingredient.name);
+            this.haveIngredients.delete(ingredient.name);
+            document.cookie = 'manualAddItems=' + encodeURIComponent(JSON.stringify(this.manualAddItems)) + '; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Strict';
+            document.cookie = 'haveIngredients=' + encodeURIComponent(JSON.stringify(Array.from(this.haveIngredients))) + '; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Strict';
+            this.updateAllIngredients();
+        }
+    },
+
+    updateIngredients() {
+        let preservedIngredients = this.ingredients.filter(i => i.recipes[0] === 'Manual Add');
+        this.ingredients = preservedIngredients;
+        this.recipes.filter(r => r.active).forEach(recipe => {
+            recipe.ingredients.forEach(ing => {
+                if (!this.ingredients.find(i => i.name === ing)) {
+                    this.ingredients.push({
+                        name: ing,
+                        needed: !this.haveIngredients.has(ing),
+                        recipes: [recipe.name]
+                    });
+                } else if (!this.ingredients.find(i => i.name === ing).recipes.includes('Manual Add')) {
+                    this.ingredients.find(i => i.name === ing).recipes.push(recipe.name);
+                }
+            });
+        });
+        document.cookie = 'haveIngredients=' + encodeURIComponent(JSON.stringify(Array.from(this.haveIngredients))) + '; expires=Fri, 31 Dec 9999 23:59:59 GMT; path=/; SameSite=Strict';
+    }
+}"
+        >
+            <div class="container mx-auto p-4">
+                <div class="flex mb-4">
+                    <button
+                        @click="activeTab = 'recipes'; window.history.pushState({}, '', '?tab=recipes')"
+                        :class="{'bg-blue-500': activeTab === 'recipes', 'bg-gray-200': activeTab !== 'recipes'}"
+                        class="px-4 py-2 rounded-l"
+                    >
+                        Recipes
+                    </button>
+                    <button
+                        @click="activeTab = 'shopping'; window.history.pushState({}, '', '?tab=shopping')"
+                        :class="{'bg-blue-500': activeTab === 'shopping', 'bg-gray-200': activeTab !== 'shopping'}"
+                        class="px-4 py-2 rounded-r"
+                    >
+                        Shopping List
+                    </button>
+                </div>
+
+                <div x-show="activeTab === 'recipes'" class="relative">
+                    <button
+                        @click="isEditing = true; editingRecipe = null"
+                        class="bg-green-500 text-white px-4 py-2 rounded mb-4"
+                    >
+                        New Recipe
+                    </button>
+
+                    <template x-if="isEditing">
+                        <div
+                            class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+                            style="z-index: 1000"
+                        >
+                            <div class="bg-white p-4 rounded">
+                                <input
+                                    x-model="newRecipe.name"
+                                    type="text"
+                                    placeholder="Recipe Name"
+                                    class="border p-2 mb-2 w-full"
+                                />
+                                <div class="mb-2 relative">
+                                    <div class="flex gap-2">
+                                        <input
+                                            x-model="newIngredient"
+                                            @input="updateSuggestions"
+                                            @keyup.enter="addIngredient"
+                                            type="text"
+                                            placeholder="Add ingredient"
+                                            class="border p-2 flex-grow"
+                                        />
+                                        <button
+                                            @click="addIngredient"
+                                            class="bg-blue-500 text-white px-4 py-2 rounded"
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
+                                    <div
+                                        x-show="suggestions.length"
+                                        class="absolute bg-white border rounded mt-1 w-full z-50"
+                                    >
+                                        <template
+                                            x-for="suggestion in suggestions"
+                                            :key="suggestion"
+                                        >
+                                            <div
+                                                @click="selectSuggestion(suggestion)"
+                                                class="p-2 hover:bg-gray-100 cursor-pointer"
+                                                x-text="suggestion"
+                                            ></div>
+                                        </template>
+                                    </div>
+                                    <div class="mt-2">
+                                        <template
+                                            x-for="(ingredient, index) in newRecipe.ingredients"
+                                            :key="index"
+                                        >
+                                            <div
+                                                class="flex items-center gap-2 p-1"
+                                            >
+                                                <span
+                                                    x-text="ingredient"
+                                                ></span>
+                                                <button
+                                                    @click="newRecipe.ingredients.splice(index, 1)"
+                                                    class="text-red-500"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                                <div>
+                                    <button
+                                        @click="saveRecipe()"
+                                        class="bg-green-500 text-white px-4 py-2 rounded"
+                                    >
+                                        Save
+                                    </button>
+                                    <button
+                                        @click="isEditing = false; editingRecipe = null"
+                                        class="bg-red-500 text-white px-4 py-2 rounded"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <h2 class="font-bold mb-2">Planned Recipes</h2>
+                            <div class="space-y-2">
+                                <template
+                                    x-for="recipe in recipes.filter(r => r.active)"
+                                    :key="recipe.name"
+                                >
+                                    <div
+                                        @click="toggleRecipeActive(recipe, $event)"
+                                        class="p-2 border rounded cursor-pointer hover:bg-gray-50 relative"
+                                    >
+                                        <span x-text="recipe.name"></span>
+                                        <button
+                                            @click="editRecipe(recipe)"
+                                            class="recipe-action absolute right-8 top-2 text-gray-500 hover:text-gray-700"
+                                        >
+                                            ✎
+                                        </button>
+                                        <div class="text-gray-400 text-sm mt-1">
+                                            <template
+                                                x-for="ingredient in recipe.ingredients"
+                                                :key="ingredient"
+                                            >
+                                                <span
+                                                    class="mr-2"
+                                                    x-text="ingredient"
+                                                ></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h2 class="font-bold mb-2">Recipe Box</h2>
+                            <div class="space-y-2">
+                                <template
+                                    x-for="recipe in recipes.filter(r => !r.active)"
+                                    :key="recipe.name"
+                                >
+                                    <div
+                                        @click="toggleRecipeActive(recipe, $event)"
+                                        class="p-2 border rounded cursor-pointer bg-gray-100 hover:bg-gray-200 relative"
+                                    >
+                                        <span x-text="recipe.name"></span>
+                                        <button
+                                            @click="editRecipe(recipe)"
+                                            class="recipe-action absolute right-8 top-2 text-gray-500 hover:text-gray-700"
+                                        >
+                                            ✎
+                                        </button>
+                                        <button
+                                            @click="deleteRecipe(recipe)"
+                                            class="recipe-action absolute right-2 top-2 text-red-500 hover:text-red-700"
+                                        >
+                                            ×
+                                        </button>
+                                        <div class="text-gray-400 text-sm mt-1">
+                                            <template
+                                                x-for="ingredient in recipe.ingredients"
+                                                :key="ingredient"
+                                            >
+                                                <span
+                                                    class="mr-2"
+                                                    x-text="ingredient"
+                                                ></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div x-show="activeTab === 'shopping'">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <h2 class="font-bold mb-2">Need</h2>
+                            <div class="flex gap-2 mb-4 relative">
+                                <input
+                                    x-model="shoppingListInput"
+                                    @input="updateShoppingListSuggestions"
+                                    @keyup.enter="addShoppingListItem"
+                                    type="text"
+                                    placeholder="Add item to shopping list"
+                                    class="border p-2 flex-grow"
+                                />
+                                <button
+                                    @click="addShoppingListItem"
+                                    class="bg-blue-500 text-white px-4 py-2 rounded"
+                                >
+                                    Add
+                                </button>
+                                <div
+                                    x-show="suggestions.length"
+                                    class="absolute top-full left-0 bg-white border rounded mt-1 w-full z-50"
+                                >
+                                    <template
+                                        x-for="suggestion in suggestions"
+                                        :key="suggestion"
+                                    >
+                                        <div
+                                            @click="selectShoppingListSuggestion(suggestion)"
+                                            class="p-2 hover:bg-gray-100 cursor-pointer"
+                                            x-text="suggestion"
+                                        ></div>
+                                    </template>
+                                </div>
+                            </div>
+                            <div class="space-y-2">
+                                <template
+                                    x-for="ingredient in ingredients.filter(i => i.needed)"
+                                    :key="ingredient.name"
+                                >
+                                    <div
+                                        @click="ingredient.needed = !ingredient.needed; haveIngredients.add(ingredient.name); updateIngredients()"
+                                        class="p-2 border rounded cursor-pointer bg-red-100 hover:bg-red-200"
+                                    >
+                                        <span x-text="ingredient.name"></span>
+                                        <span
+                                            class="text-gray-400 text-sm"
+                                            x-text="'(' + ingredient.recipes.join(', ') + ')'"
+                                        ></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h2 class="font-bold mb-2">Have</h2>
+                            <div class="space-y-2">
+                                <template
+                                    x-for="ingredient in ingredients.filter(i => !i.needed)"
+                                    :key="ingredient.name"
+                                >
+                                    <div class="p-2 border rounded relative">
+                                        <div
+                                            @click="ingredient.needed = !ingredient.needed; haveIngredients.delete(ingredient.name); updateIngredients()"
+                                            class="cursor-pointer hover:bg-gray-50"
+                                        >
+                                            <span
+                                                x-text="ingredient.name"
+                                            ></span>
+                                            <span
+                                                class="text-gray-400 text-sm"
+                                                x-text="'(' + ingredient.recipes.join(', ') + ')'"
+                                            ></span>
+                                        </div>
+                                        <button
+                                            x-show="ingredient.recipes.includes('Manual Add')"
+                                            @click="deleteManualItem(ingredient)"
+                                            class="absolute right-2 top-2 text-red-500 hover:text-red-700"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
